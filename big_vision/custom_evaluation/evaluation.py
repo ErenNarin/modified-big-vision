@@ -38,7 +38,7 @@ def evaluation_score(reference, candidate):
         'readability': 0.10
     }
 
-    hybrid_score = compute_hybrid_score(metrics)
+    hybrid_score = compute_hybrid_score(metrics, weights)
     #print(f"Evaluation Score: {hybrid_score:.4f}")
 
     return hybrid_score
