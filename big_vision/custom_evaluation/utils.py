@@ -15,8 +15,8 @@ def normalize(metric_name, value):
         norm_value = min(float(value) / 10, 1.0)
     elif metric_name == 'spice':  # already in [0, 1]
         norm_value = value
-    elif metric_name == 'bertscore':  # already in [0, 1]
-        norm_value = float(value)
+    elif metric_name == 'bertscore':  # mostly in [0.75, 0.95], map to [0, 1]
+        return min(1, (max(0.0, (float(value) - 0.75)) * 5))
     elif metric_name == 'bleu':  # often in [0, 1], get average score
         sum = 0
         for v in value:
@@ -28,7 +28,7 @@ def normalize(metric_name, value):
             sum += s.fmeasure
         norm_value = sum / len(value)
     elif metric_name == 'grammar':  # fewer errors = better
-        norm_value = min(1.0, 2 - value / 2)  # 2 errors are ok, more errors should decrease the score
+        norm_value = max(0, 1 - value / 2)  # >= 2 errors will get minimum score
     elif metric_name == 'readability':  # Flesch: (0–100) -> [0-1]
         norm_value = min(max(value / 100, 0), 1)
     return norm_value
