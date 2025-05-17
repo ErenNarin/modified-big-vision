@@ -1,55 +1,41 @@
 from bert_score import score
 import language_tool_python
 import textstat
-import gensim.downloader as api
-from big_vision.custom_evaluation import gensim_model
-from big_vision.custom_evaluation.utils import compute_hybrid_score
+from big_vision.custom_evaluation.utils import format_for_coco, compute_hybrid_score
+from pycocoevalcap.bleu.bleu import Bleu
 from rouge_score import rouge_scorer
-
-'''
-| ----------- | ------------------------------------- |
-| Metric      | Purpose                               |
-| ----------- | ------------------------------------- |
-| BERTScore   | Semantic similarity (deep context)    |
-| ROGUE       | Longest N-gram overlap                |
-| Grammar     | Fluency and correctness               |
-| Readability | Clarity and ease of understanding     |
-| ----------- | ------------------------------------- |
-  MoverScore              https://www.galileo.ai/blog/moverscore-ai-semantic-text-evaluation
-  Word Mover's Distance   https://radimrehurek.com/gensim/auto_examples/tutorials/run_wmd.html#word-mover-s-distance
-'''
 
 
 def evaluation_score(reference, candidate):
-    wm_distance = calc_wmd_score(reference, candidate)
     bert_p, bert_r, bert_f1 = calc_bert_score(reference, candidate)
-    rogue_scores = calc_rogue_score(reference, candidate)
     grammar_score = calc_grammar_score(candidate)
     readability_score = calc_readability_score(candidate)
+    bleu_score = calc_bleu_score(reference, candidate)
+    rogue_score = calc_rogue_score(reference, candidate)
 
     '''
     print("=== Evaluation Results ===")
-    print(f"World Mover's Distance Score: {normalize('wmd', wm_distance):.2f}")
-    print(f"BERT Score: {normalize('bertscore', F1):.2f}")
-    print(f"Rogue Score: {normalize('rogue', rogue_scores):.2f}")
-    print(f"Grammar Score: {normalize('grammar', grammar_score):.2f}")
-    print(f"Flesch Reading Ease Score: {normalize('readability', readability_score):.2f}")
+    print(f"BERTScore F1: {bert_f1[0]:.4f}")
+    print(f"BLEU-1 to 4: {[round(s, 4) for s in bleu_score]}")
+    print(f"Rogue Scores: {[s.fmeasure for m, s in rogue_score.items()]}")
+    print(f"Grammar Issues: {grammar_score}")
+    print(f"Flesch Reading Ease: {readability_score:.2f}")
     '''
 
     metrics = {
-        'wmd': wm_distance,
-        'bertscore': bert_f1,
-        'rogue': rogue_scores,
+        'bertscore': bert_f1[0],
+        'bleu': bleu_score,
+        'rogue': rogue_score,
         'grammar': grammar_score,
         'readability': readability_score
     }
 
     weights = {
-        'wmd': 0.35,
-        'bertscore': 0.35,
+        'bertscore': 0.40,
+        'bleu': 0.20,
         'rogue': 0.20,
-        'grammar': 0.05,
-        'readability': 0.05
+        'grammar': 0.10,
+        'readability': 0.10
     }
 
     hybrid_score = compute_hybrid_score(metrics, weights)
@@ -58,23 +44,9 @@ def evaluation_score(reference, candidate):
     return hybrid_score
 
 
-def calc_wmd_score(reference, candidate):
-    if 'gensim_model' not in globals() or gensim_model is None:
-        gensim_model = api.load('word2vec-google-news-300')
-        print("Gensim model loaded.")
-    wm_distance = gensim_model.wmdistance(candidate, reference)
-    print("Word Mover’s Distance: ", wm_distance)
-
-
 def calc_bert_score(reference, candidate):
     P, R, F1 = score([candidate], [reference], lang="en", verbose=False)
     return P, R, F1
-
-
-def calc_rogue_score(reference, candidate):
-    rogue_scorer = rouge_scorer.RougeScorer(['rouge1', 'rougeL', 'rougeLsum'], use_stemmer=True)
-    rogue_scores = rogue_scorer.score(candidate, reference)
-    return rogue_scores
 
 
 def calc_grammar_score(candidate):
@@ -87,3 +59,25 @@ def calc_grammar_score(candidate):
 def calc_readability_score(candidate):
     readability_score = textstat.flesch_reading_ease(candidate)
     return readability_score
+
+
+def calc_bleu_score(reference, candidate):
+    reference_list = {
+        "0": [reference]
+    }
+    candidate_list = {
+        "0": [candidate]
+    }
+    # COCO-compatible format
+    gts = format_for_coco(reference_list)
+    res = format_for_coco(candidate_list)
+
+    bleu_scorer = Bleu(4)
+    bleu_scores, _ = bleu_scorer.compute_score(gts, res)
+    return bleu_scores
+
+
+def calc_rogue_score(reference, candidate):
+    rogue_scorer = rouge_scorer.RougeScorer(['rouge1', 'rougeL', 'rougeLsum'], use_stemmer=True)
+    rogue_scores = rogue_scorer.score(candidate, reference)
+    return rogue_scores
